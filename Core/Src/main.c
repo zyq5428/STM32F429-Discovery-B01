@@ -131,7 +131,8 @@ int main(void)
   MX_TIM1_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  /* Initialization of ILI9341 component*/
+  ili9341_Init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
