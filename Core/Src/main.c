@@ -22,7 +22,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <string.h>
-#include "moon.h"
+//#include "moon.h"
+#include "panda.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -96,7 +97,9 @@ int iar_fputc(int ch);
 #define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
 #endif /* __ICCARM__ */
 
-static void SDRAM_Initialization_Sequence(SDRAM_HandleTypeDef *hsdram, FMC_SDRAM_CommandTypeDef *Command);
+static void SDRAM_Initialization_Sequence(SDRAM_HandleTypeDef *hsdram,
+		FMC_SDRAM_CommandTypeDef *Command);
+static void LCD_Refresh(uint32_t pdata);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -143,13 +146,11 @@ int main(void) {
 	/* USER CODE BEGIN 2 */
 	/* Program the SDRAM external device */
 	SDRAM_Initialization_Sequence(&hsdram1, &command);
+	printf("** Init SDRAM device Success ** \n\r");
 	/* Initialization of ILI9341 component*/
-	printf("** Initialization of ILI9341 component ** \n\r");
 	ili9341_Init();
-	// 示例：清为黑色 0x0000
-//	memset((void*)LCD_FRAME_BUFFER_ADDRESS, 0x00, IMAGE_SIZE_BYTES);
-	// 将图像数据复制到 LTDC 帧缓冲区
-	memcpy((void*)LCD_FRAME_BUFFER_ADDRESS, moon, IMAGE_SIZE_BYTES);
+	printf("** Init ILI9341 Success ** \n\r");
+
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
@@ -158,8 +159,12 @@ int main(void) {
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
+		LCD_Refresh((uint32_t) panda);
 		HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
-		HAL_Delay(500);
+		HAL_Delay(3000);
+//		LCD_Refresh((uint32_t) panda);
+//		HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+//		HAL_Delay(3000);
 	}
 	/* USER CODE END 3 */
 }
@@ -246,10 +251,10 @@ static void MX_DMA2D_Init(void) {
 	/* USER CODE END DMA2D_Init 1 */
 	hdma2d.Instance = DMA2D;
 	hdma2d.Init.Mode = DMA2D_M2M;
-	hdma2d.Init.ColorMode = DMA2D_OUTPUT_ARGB8888;
+	hdma2d.Init.ColorMode = DMA2D_OUTPUT_RGB565;
 	hdma2d.Init.OutputOffset = 0;
 	hdma2d.LayerCfg[1].InputOffset = 0;
-	hdma2d.LayerCfg[1].InputColorMode = DMA2D_INPUT_ARGB8888;
+	hdma2d.LayerCfg[1].InputColorMode = DMA2D_INPUT_RGB565;
 	hdma2d.LayerCfg[1].AlphaMode = DMA2D_NO_MODIF_ALPHA;
 	hdma2d.LayerCfg[1].InputAlpha = 0;
 	if (HAL_DMA2D_Init(&hdma2d) != HAL_OK) {
@@ -658,69 +663,85 @@ size_t __write(int file, unsigned char const *ptr, size_t len)
 #endif /* __ICCARM__ */
 
 /**
-  * @brief  Perform the SDRAM exernal memory inialization sequence
-  * @param  hsdram: SDRAM handle
-  * @param  Command: Pointer to SDRAM command structure
-  * @retval None
-  */
-static void SDRAM_Initialization_Sequence(SDRAM_HandleTypeDef *hsdram, FMC_SDRAM_CommandTypeDef *Command)
-{
-  __IO uint32_t tmpmrd =0; // 声明一个临时变量，用于构建模式寄存器（MRD）的值
+ * @brief  Perform the SDRAM exernal memory inialization sequence
+ * @param  hsdram: SDRAM handle
+ * @param  Command: Pointer to SDRAM command structure
+ * @retval None
+ */
+static void SDRAM_Initialization_Sequence(SDRAM_HandleTypeDef *hsdram,
+		FMC_SDRAM_CommandTypeDef *Command) {
+	__IO uint32_t tmpmrd = 0; // 声明一个临时变量，用于构建模式寄存器（MRD）的值
 
-  /* Step 3:  Configure a clock configuration enable command */
-  // 第一步：配置时钟使能命令
-  Command->CommandMode 			 = FMC_SDRAM_CMD_CLK_ENABLE;     // 设置命令模式：时钟使能（CLK ENABLE）
-  Command->CommandTarget 		 = FMC_SDRAM_CMD_TARGET_BANK2;   // 指定命令发送到目标 Bank 2
-  Command->AutoRefreshNumber 	 = 1;                            // 自动刷新次数（此处设为 1，不影响时钟使能）
-  Command->ModeRegisterDefinition = 0;                            // 模式寄存器定义值（此处为 0）
+	/* Step 3:  Configure a clock configuration enable command */
+	// 第一步：配置时钟使能命令
+	Command->CommandMode = FMC_SDRAM_CMD_CLK_ENABLE;  // 设置命令模式：时钟使能（CLK ENABLE）
+	Command->CommandTarget = FMC_SDRAM_CMD_TARGET_BANK2;   // 指定命令发送到目标 Bank 2
+	Command->AutoRefreshNumber = 1;                    // 自动刷新次数（此处设为 1，不影响时钟使能）
+	Command->ModeRegisterDefinition = 0;                      // 模式寄存器定义值（此处为 0）
 
-  /* Send the command */
-  HAL_SDRAM_SendCommand(hsdram, Command, 0x1000);                 // 发送时钟使能命令，等待 SDRAM 内部时钟稳定
+	/* Send the command */
+	HAL_SDRAM_SendCommand(hsdram, Command, 0x1000);  // 发送时钟使能命令，等待 SDRAM 内部时钟稳定
 
-  /* Step 4: Insert 100 ms delay */
-  HAL_Delay(100);                                                 // 插入 100 毫秒延时，等待时钟稳定和内部状态建立
+	/* Step 4: Insert 100 ms delay */
+	HAL_Delay(100);                                 // 插入 100 毫秒延时，等待时钟稳定和内部状态建立
 
-  /* Step 5: Configure a PALL (precharge all) command */
-  // 第二步：配置预充电所有 Bank 命令
-  Command->CommandMode 			 = FMC_SDRAM_CMD_PALL;           // 设置命令模式：预充电所有 Bank（PALL）
-  Command->CommandTarget 	     = FMC_SDRAM_CMD_TARGET_BANK2;   // 指定命令发送到目标 Bank 2
-  Command->AutoRefreshNumber 	 = 1;                            // 自动刷新次数
-  Command->ModeRegisterDefinition = 0;                            // 模式寄存器定义值
+	/* Step 5: Configure a PALL (precharge all) command */
+	// 第二步：配置预充电所有 Bank 命令
+	Command->CommandMode = FMC_SDRAM_CMD_PALL;        // 设置命令模式：预充电所有 Bank（PALL）
+	Command->CommandTarget = FMC_SDRAM_CMD_TARGET_BANK2;   // 指定命令发送到目标 Bank 2
+	Command->AutoRefreshNumber = 1;                            // 自动刷新次数
+	Command->ModeRegisterDefinition = 0;                            // 模式寄存器定义值
 
-  /* Send the command */
-  HAL_SDRAM_SendCommand(hsdram, Command, 0x1000);                 // 发送预充电命令，关闭所有打开的行
+	/* Send the command */
+	HAL_SDRAM_SendCommand(hsdram, Command, 0x1000);          // 发送预充电命令，关闭所有打开的行
 
-  /* Step 6 : Configure a Auto-Refresh command */
-  // 第三步：配置自动刷新命令（发送多次以建立刷新循环）
-  Command->CommandMode 			 = FMC_SDRAM_CMD_AUTOREFRESH_MODE; // 设置命令模式：自动刷新模式
-  Command->CommandTarget 		 = FMC_SDRAM_CMD_TARGET_BANK2;     // 指定命令发送到目标 Bank 2
-  Command->AutoRefreshNumber 	 = 4;                              // 指定执行 4 次自动刷新操作
-  Command->ModeRegisterDefinition = 0;                              // 模式寄存器定义值
+	/* Step 6 : Configure a Auto-Refresh command */
+	// 第三步：配置自动刷新命令（发送多次以建立刷新循环）
+	Command->CommandMode = FMC_SDRAM_CMD_AUTOREFRESH_MODE; // 设置命令模式：自动刷新模式
+	Command->CommandTarget = FMC_SDRAM_CMD_TARGET_BANK2;     // 指定命令发送到目标 Bank 2
+	Command->AutoRefreshNumber = 4;                            // 指定执行 4 次自动刷新操作
+	Command->ModeRegisterDefinition = 0;                             // 模式寄存器定义值
 
-  /* Send the command */
-  HAL_SDRAM_SendCommand(hsdram, Command, 0x1000);                 // 发送自动刷新命令
+	/* Send the command */
+	HAL_SDRAM_SendCommand(hsdram, Command, 0x1000);                 // 发送自动刷新命令
 
-  /* Step 7: Program the external memory mode register */
-  // 第四步：配置并加载模式寄存器（MRD），正式定义 SDRAM 工作方式
-  tmpmrd = (uint32_t)SDRAM_MODEREG_BURST_LENGTH_2          | // 突发长度（例如：2）
-                     SDRAM_MODEREG_BURST_TYPE_SEQUENTIAL   | // 突发类型（连续）
-                     SDRAM_MODEREG_CAS_LATENCY_3           | // CAS 延迟（例如：3 个时钟周期）
-                     SDRAM_MODEREG_OPERATING_MODE_STANDARD | // 工作模式（标准操作模式）
-                     SDRAM_MODEREG_WRITEBURST_MODE_SINGLE;    // 写突发模式（单个写入）
+	/* Step 7: Program the external memory mode register */
+	// 第四步：配置并加载模式寄存器（MRD），正式定义 SDRAM 工作方式
+	tmpmrd = (uint32_t) SDRAM_MODEREG_BURST_LENGTH_2 | // 突发长度（例如：2）
+			SDRAM_MODEREG_BURST_TYPE_SEQUENTIAL | // 突发类型（连续）
+			SDRAM_MODEREG_CAS_LATENCY_3 | // CAS 延迟（例如：3 个时钟周期）
+			SDRAM_MODEREG_OPERATING_MODE_STANDARD | // 工作模式（标准操作模式）
+			SDRAM_MODEREG_WRITEBURST_MODE_SINGLE;    // 写突发模式（单个写入）
 
-  Command->CommandMode = FMC_SDRAM_CMD_LOAD_MODE;                // 设置命令模式：加载模式寄存器
-  Command->CommandTarget 		 = FMC_SDRAM_CMD_TARGET_BANK2;     // 指定命令发送到目标 Bank 2
-  Command->AutoRefreshNumber 	 = 1;                              // 自动刷新次数
-  Command->ModeRegisterDefinition = tmpmrd;                         // 传入构建好的模式寄存器值
+	Command->CommandMode = FMC_SDRAM_CMD_LOAD_MODE;            // 设置命令模式：加载模式寄存器
+	Command->CommandTarget = FMC_SDRAM_CMD_TARGET_BANK2;     // 指定命令发送到目标 Bank 2
+	Command->AutoRefreshNumber = 1;                              // 自动刷新次数
+	Command->ModeRegisterDefinition = tmpmrd;                    // 传入构建好的模式寄存器值
 
-  /* Send the command */
-  HAL_SDRAM_SendCommand(hsdram, Command, 0x1000);                 // 发送加载模式寄存器命令
+	/* Send the command */
+	HAL_SDRAM_SendCommand(hsdram, Command, 0x1000);               // 发送加载模式寄存器命令
 
-  /* Step 8: Set the refresh rate counter */
-  // 第五步：设置 FMC 刷新计数器，确保 SDRAM 持续刷新
-  /* (15.62 us x Freq) - 20 */
-  /* Set the device refresh counter */
-  HAL_SDRAM_ProgramRefreshRate(hsdram, REFRESH_COUNT);           // 编程 FMC 硬件，设置自动刷新周期
+	/* Step 8: Set the refresh rate counter */
+	// 第五步：设置 FMC 刷新计数器，确保 SDRAM 持续刷新
+	/* (15.62 us x Freq) - 20 */
+	/* Set the device refresh counter */
+	HAL_SDRAM_ProgramRefreshRate(hsdram, REFRESH_COUNT);   // 编程 FMC 硬件，设置自动刷新周期
+}
+
+static void LCD_Refresh(uint32_t pdata) {
+	// 使用 DMA2D 拷贝图像
+	HAL_StatusTypeDef status = HAL_DMA2D_Start(&hdma2d, pdata, // 源地址 (Source Address)
+			LCD_FRAME_BUFFER_ADDRESS,   // 目标地址 (Destination Address)
+			PANDA_WIDTH,                 // 宽度 (Width)
+			PANDA_HEIGHT);               // 高度 (Height)
+
+	if (status != HAL_OK) {
+		printf("DMA2D Start Failed!\n\r");
+		Error_Handler();
+	}
+	// 等待 DMA2D 传输完成
+	// 在图像传输期间，CPU 可以执行其他任务，但如果要立即显示，必须等待传输结束。
+	HAL_DMA2D_PollForTransfer(&hdma2d, 0x1000);
 }
 
 /* USER CODE END 4 */
