@@ -22,6 +22,8 @@ C_DEPS :=
 
 # Every subdirectory with source files must be described here
 SUBDIRS := \
+BSP/Components/ili9341 \
+BSP/STM32F429I-Discovery \
 Core/Src \
 Core/Startup \
 Drivers/STM32F4xx_HAL_Driver/Src \
